@@ -208,3 +208,4 @@ def test_invalid_log_level_from_environment(monkeypatch):
 
     with pytest.raises(ConfigurationError):
         CalculatorConfig.from_env()
+
