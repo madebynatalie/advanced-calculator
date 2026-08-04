@@ -189,3 +189,134 @@ def test_trim_history_does_nothing_when_within_limit(
     calculator.execute_calculation(5, 3, "add")
 
     assert calculator.history_count == 1
+@pytest.mark.parametrize(
+        "command, expected_message",
+    [
+            ("", "Please enter a command."),
+            ("   ", "Please enter a command."),
+            ("add", "Use the format:"),
+            ("add 5", "Use the format:"),
+            ("add 5 3 extra", "Use the format:"),
+            ("help extra", "does not accept arguments"),
+            ("history extra", "does not accept arguments"),
+    ],
+)
+def test_process_command_rejects_invalid_format(
+    calculator_config,
+    command,
+    expected_message,
+):
+    calculator = Calculator(calculator_config)
+
+    message, should_continue = calculator.process_command(command)
+
+    assert expected_message in message
+    assert should_continue is True
+
+
+@pytest.mark.parametrize(
+    "command, expected_result",
+    [
+        ("add 5 3", 8),
+        ("subtract 10 4", 6),
+        ("multiply 3 7", 21),
+        ("divide 20 5", 4),
+        ("power 2 3", 8),
+        ("root 9 2", 3),
+    ],
+)
+def test_process_calculation_command(
+    calculator_config,
+    command,
+    expected_result,
+):
+    calculator = Calculator(calculator_config)
+
+    message, should_continue = calculator.process_command(command)
+
+    assert message == f"Result: {float(expected_result)}"
+    assert should_continue is True
+    assert calculator.history_count == 1
+
+
+def test_process_help_command(calculator_config):
+    calculator = Calculator(calculator_config)
+
+    message, should_continue = calculator.process_command("help")
+
+    assert "Available Commands" in message
+    assert should_continue is True
+
+
+def test_process_history_command(calculator_config):
+    calculator = Calculator(calculator_config)
+    calculator.execute_calculation(5, 3, "add")
+
+    message, should_continue = calculator.process_command("history")
+
+    assert "add" in message
+    assert "8.0" in message
+    assert should_continue is True
+
+
+def test_process_clear_command(calculator_config):
+    calculator = Calculator(calculator_config)
+    calculator.execute_calculation(5, 3, "add")
+
+    message, should_continue = calculator.process_command("clear")
+
+    assert message == "History cleared."
+    assert calculator.history_count == 0
+    assert should_continue is True
+
+
+def test_process_undo_and_redo_commands(calculator_config):
+    calculator = Calculator(calculator_config)
+    calculator.execute_calculation(5, 3, "add")
+
+    undo_message, undo_continue = calculator.process_command("undo")
+
+    assert undo_message == "Last action undone."
+    assert undo_continue is True
+    assert calculator.history_count == 0
+
+    redo_message, redo_continue = calculator.process_command("redo")
+
+    assert redo_message == "Last action restored."
+    assert redo_continue is True
+    assert calculator.history_count == 1
+
+
+def test_process_save_command(calculator_config):
+    calculator = Calculator(calculator_config)
+    calculator.execute_calculation(5, 3, "add")
+
+    message, should_continue = calculator.process_command("save")
+
+    assert message == "History saved."
+    assert calculator.history.file_path.exists()
+    assert should_continue is True
+
+
+def test_process_load_command(calculator_config):
+    calculator = Calculator(calculator_config)
+    calculator.execute_calculation(5, 3, "add")
+    calculator.save_history()
+    calculator.clear_history()
+
+    message, should_continue = calculator.process_command("load")
+
+    assert message == "History loaded."
+    assert calculator.history_count == 1
+    assert calculator.caretaker.can_undo is False
+    assert should_continue is True
+
+
+@pytest.mark.parametrize("command", ["exit", "quit", " EXIT "])
+def test_process_exit_command(calculator_config, command):
+    calculator = Calculator(calculator_config)
+
+    message, should_continue = calculator.process_command(command)
+
+    assert message == "Goodbye!"
+    assert should_continue is False
