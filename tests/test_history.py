@@ -249,3 +249,51 @@ def test_string_populated_history(history):
     assert "Operation" in output
     assert "add" in output
     assert "8.0" in output
+def test_save_wraps_os_error(history, monkeypatch):
+    """Test that CSV save errors become HistoryError."""
+
+    def raise_os_error(*args, **kwargs):
+        raise OSError("Unable to write file")
+
+    monkeypatch.setattr(
+        pd.DataFrame,
+        "to_csv",
+        raise_os_error,
+    )
+
+    with pytest.raises(
+        HistoryError,
+        match="Unable to save history to",
+    ):
+        history.save()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError("Unable to read file"),
+        pd.errors.ParserError("Invalid CSV"),
+    ],
+)
+def test_load_wraps_file_errors(
+    history,
+    monkeypatch,
+    error,
+):
+    """Test that CSV loading errors become HistoryError."""
+    history.file_path.touch()
+
+    def raise_load_error(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(
+        pd,
+        "read_csv",
+        raise_load_error,
+    )
+
+    with pytest.raises(
+        HistoryError,
+        match="Unable to load history from",
+    ):
+        history.load()

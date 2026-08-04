@@ -268,5 +268,5 @@ def main() -> None:
         print(f"Unable to start calculator: {error}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

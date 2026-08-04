@@ -1,13 +1,16 @@
 """Tests for the calculator facade and REPL interface."""
 
+import app.calculator_repl as repl_module
 import pandas as pd
 import pytest
 
+from app.exceptions import CalculatorError
 from app.calculation import Calculation 
 from app.calculator_config import CalculatorConfig
 from app.calculator_memento import CalculatorCaretaker
 from app.calculator_repl import Calculator
 from app.history import History
+from unittest.mock import Mock 
 
 
 @pytest.fixture
@@ -320,3 +323,160 @@ def test_process_exit_command(calculator_config, command):
 
     assert message == "Goodbye!"
     assert should_continue is False
+
+def test_run_exits_normally(
+    calculator_config,
+    monkeypatch,
+    capsys,
+):
+    """Test the normal interactive REPL exit path."""
+    calculator = Calculator(calculator_config)
+
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt: "exit",
+    )
+
+    calculator.run()
+
+    output = capsys.readouterr().out
+
+    assert "Advanced Calculator" in output
+    assert "Goodbye!" in output
+
+
+def test_run_handles_calculator_error(
+    calculator_config,
+    monkeypatch,
+    capsys,
+):
+    """Test that calculator errors do not terminate the REPL."""
+    calculator = Calculator(calculator_config)
+
+    user_inputs = iter(["bad command", "exit"])
+
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt: next(user_inputs),
+    )
+
+    original_process_command = calculator.process_command
+    call_count = 0
+
+    def process_with_error(user_input):
+        nonlocal call_count
+        call_count += 1
+
+        if call_count == 1:
+            raise CalculatorError("Test calculator error")
+
+        return original_process_command(user_input)
+
+    monkeypatch.setattr(
+        calculator,
+        "process_command",
+        process_with_error,
+    )
+
+    calculator.run()
+
+    output = capsys.readouterr().out
+
+    assert "Error: Test calculator error" in output
+    assert "Goodbye!" in output
+
+
+@pytest.mark.parametrize(
+    "input_error",
+    [
+        EOFError(),
+        KeyboardInterrupt(),
+    ],
+)
+def test_run_handles_terminal_exit(
+    calculator_config,
+    monkeypatch,
+    capsys,
+    input_error,
+):
+    """Test EOF and keyboard-interrupt exit behavior."""
+    calculator = Calculator(calculator_config)
+
+    def raise_input_error(prompt):
+        raise input_error
+
+    monkeypatch.setattr(
+        "builtins.input",
+        raise_input_error,
+    )
+
+    calculator.run()
+
+    output = capsys.readouterr().out
+
+    assert "Goodbye!" in output
+
+def test_main_starts_calculator(monkeypatch):
+    """Test that main creates and runs the calculator."""
+    fake_calculator = Mock()
+
+    monkeypatch.setattr(
+        repl_module,
+        "Calculator",
+        lambda: fake_calculator,
+    )
+
+    repl_module.main()
+
+    fake_calculator.run.assert_called_once()
+
+
+def test_main_handles_startup_error(
+    monkeypatch,
+    capsys,
+):
+    """Test startup configuration or history errors."""
+
+    def raise_startup_error():
+        raise CalculatorError("Startup failed")
+
+    monkeypatch.setattr(
+        repl_module,
+        "Calculator",
+        raise_startup_error,
+    )
+
+    repl_module.main()
+
+    output = capsys.readouterr().out
+
+    assert (
+        "Unable to start calculator: Startup failed"
+        in output
+    )
+def test_run_continues_after_normal_command(
+    calculator_config,
+    monkeypatch,
+    capsys,
+):
+    """Test that the REPL continues after processing a command."""
+    calculator = Calculator(calculator_config)
+
+    user_inputs = iter(
+        [
+            "add 5 3",
+            "exit",
+        ]
+    )
+
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt: next(user_inputs),
+    )
+
+    calculator.run()
+
+    output = capsys.readouterr().out
+
+    assert "Result: 8.0" in output
+    assert "Goodbye!" in output
