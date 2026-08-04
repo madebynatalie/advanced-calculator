@@ -3,6 +3,7 @@
 import pandas as pd
 import pytest
 
+from app.calculation import Calculation 
 from app.calculator_config import CalculatorConfig
 from app.calculator_memento import CalculatorCaretaker
 from app.calculator_repl import Calculator
@@ -97,3 +98,94 @@ def test_calculator_loads_existing_history(calculator_config):
     assert calculator.history_count == 2
     assert calculator.history.get_last()["Operation"] == "divide"
     assert calculator.history.get_last()["Result"] == pytest.approx(5)
+def test_execute_calculation_adds_to_history(calculator_config):
+    calculator = Calculator(calculator_config)
+
+    calculation = calculator.execute_calculation(5, 3, "add")
+
+    assert isinstance(calculation, Calculation)
+    assert calculation.result == pytest.approx(8)
+    assert calculator.history_count == 1
+    assert calculator.history.get_last()["Operation"] == "add"
+
+
+def test_execute_calculation_auto_saves(calculator_config):
+    calculator = Calculator(calculator_config)
+
+    calculator.execute_calculation(10, 2, "divide")
+
+    assert calculator.history.file_path.exists()
+
+
+def test_execute_calculation_does_not_auto_save_when_disabled(
+    tmp_path,
+):
+    config = CalculatorConfig(
+        history_file=str(tmp_path / "history.csv"),
+        auto_save=False,
+        max_history=100,
+        log_level="INFO",
+    )
+
+    calculator = Calculator(config)
+    calculator.execute_calculation(5, 3, "add")
+
+    assert calculator.history.file_path.exists() is False
+
+
+def test_undo_removes_latest_calculation(calculator_config):
+    calculator = Calculator(calculator_config)
+
+    calculator.execute_calculation(5, 3, "add")
+    calculator.execute_calculation(10, 2, "divide")
+
+    calculator.undo()
+
+    assert calculator.history_count == 1
+    assert calculator.history.get_last()["Operation"] == "add"
+
+
+def test_redo_restores_latest_calculation(calculator_config):
+    calculator = Calculator(calculator_config)
+
+    calculator.execute_calculation(5, 3, "add")
+    calculator.execute_calculation(10, 2, "divide")
+
+    calculator.undo()
+    calculator.redo()
+
+    assert calculator.history_count == 2
+    assert calculator.history.get_last()["Operation"] == "divide"
+
+
+def test_history_is_trimmed_to_configured_maximum(tmp_path):
+    config = CalculatorConfig(
+        history_file=str(tmp_path / "history.csv"),
+        auto_save=False,
+        max_history=2,
+        log_level="INFO",
+    )
+
+    calculator = Calculator(config)
+
+    calculator.execute_calculation(1, 1, "add")
+    calculator.execute_calculation(2, 2, "add")
+    calculator.execute_calculation(3, 3, "add")
+
+    assert calculator.history_count == 2
+    assert calculator.history.dataframe.iloc[0][
+        "First Number"
+    ] == pytest.approx(2)
+    assert calculator.history.get_last()[
+        "First Number"
+    ] == pytest.approx(3)
+
+
+def test_trim_history_does_nothing_when_within_limit(
+    calculator_config,
+):
+    calculator = Calculator(calculator_config)
+
+    calculator.execute_calculation(5, 3, "add")
+
+    assert calculator.history_count == 1
