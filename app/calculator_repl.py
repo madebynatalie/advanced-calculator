@@ -37,3 +37,41 @@ class Calculator:
         """Return the number of calculations stored in history."""
 
         return len(self.history)
+        def show_help(self)-> str:
+            """Return a help message describing supported commands."""
+
+            return (
+                "\nAvailable Commands:\n"
+                "  add <a> <b>\n"
+                "  subtract <a> <b>\n"
+                "  multiply <a> <b>\n"
+                "  divide <a> <b>\n"
+                "  power <a> <b>\n"
+                "  root <a> <b>\n\n"
+                "Other Commands:\n"
+                "  history\n"
+                "  clear\n"
+                "  undo\n"
+                "  redo\n"
+                "  save\n"
+                "  load\n"
+                "  help\n"
+                "  exit"
+            )
+
+        def show_history(self) -> str:
+            """Return the formatted calculation history."""
+            return str(self.history)
+
+        def clear_history(self) -> None:
+            """Clear all calculation history."""
+            self.caretaker.save_state(self.history)
+            self.history.clear()
+
+        def save_history(self) -> None:
+            """Save history to disk."""
+            self.history.save()
+
+        def load_history(self) -> None:
+            """Load history from disk."""
+            self.history.load()
