@@ -6,6 +6,7 @@ from app.calculator_memento import CalculatorCaretaker
 from app.exceptions import CalculatorError
 from app.history import History
 from app.input_validators import validate_operation_name
+from app.observers import AutoSaveObserver, LoggingObserver
 
 
 class Calculator:
@@ -13,7 +14,8 @@ class Calculator:
     Provide a simplified interface to the calculator subsystems.
 
     This class represents the Facade design pattern because it coordinates
-    configuration, history management, and undo/redo state management.
+    configuration, history, calculation execution, undo/redo, observers,
+    and command processing.
     """
 
     def __init__(
@@ -24,6 +26,11 @@ class Calculator:
         self.config = config or CalculatorConfig.from_env()
         self.history = History(self.config.history_file)
         self.caretaker = CalculatorCaretaker()
+
+        self.observers = [
+            LoggingObserver(),
+            AutoSaveObserver(),
+        ]
 
         self._load_history_on_startup()
 
@@ -81,7 +88,7 @@ class Calculator:
         second_number,
         operation_name: str,
     ) -> Calculation:
-        """Create, store, and optionally save a calculation."""
+        """Create, store, and notify observers of a calculation."""
         self.caretaker.save_state(self.history)
 
         calculation = Calculation(
@@ -92,25 +99,19 @@ class Calculator:
 
         self.history.add(calculation)
         self._trim_history()
-
-        if self.config.auto_save:
-            self.history.save()
+        self.notify_observers()
 
         return calculation
 
     def undo(self) -> None:
         """Undo the most recent calculator state change."""
         self.caretaker.undo(self.history)
-
-        if self.config.auto_save:
-            self.history.save()
+        self.notify_observers()
 
     def redo(self) -> None:
         """Redo the most recently undone calculator state change."""
         self.caretaker.redo(self.history)
-
-        if self.config.auto_save:
-            self.history.save()
+        self.notify_observers()
 
     def _trim_history(self) -> None:
         """Keep history within the configured maximum size."""
@@ -122,12 +123,12 @@ class Calculator:
         )
 
         self.history.restore(trimmed_dataframe)
+
     def process_command(self, user_input: str) -> tuple[str, bool]:
         """
         Process one user command.
 
-        Returns a message and a Boolean indicating whether the REPL
-        should continue running.
+        Return a message and whether the REPL should continue.
         """
         stripped_input = user_input.strip()
 
@@ -196,9 +197,7 @@ class Calculator:
     def _handle_clear(self) -> tuple[str, bool]:
         """Process the clear command."""
         self.clear_history()
-
-        if self.config.auto_save:
-            self.history.save()
+        self.notify_observers()
 
         return "History cleared.", True
 
@@ -221,12 +220,18 @@ class Calculator:
         """Process the load command."""
         self.load_history()
         self.caretaker.clear()
+
         return "History loaded.", True
 
     @staticmethod
     def _handle_exit() -> tuple[str, bool]:
         """Process the exit command."""
         return "Goodbye!", False
+
+    def notify_observers(self) -> None:
+        """Notify all registered observers."""
+        for observer in self.observers:
+            observer.update(self)
 
     def run(self) -> None:
         """Run the calculator Read-Eval-Print Loop."""
@@ -236,9 +241,11 @@ class Calculator:
         while True:
             try:
                 user_input = input("calculator> ")
+
                 message, should_continue = self.process_command(
                     user_input
                 )
+
                 print(message)
 
                 if not should_continue:
@@ -250,7 +257,8 @@ class Calculator:
             except (EOFError, KeyboardInterrupt):
                 print("\nGoodbye!")
                 break
-            
+
+
 def main() -> None:
     """Start the calculator application."""
     try:
